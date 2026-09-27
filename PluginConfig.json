@@ -1,0 +1,46 @@
+{
+  "name": "w.tv",
+  "description": "Unofficial plugin for w.tv live streams",
+  "author": "Community",
+  "authorUrl": "https://w.tv",
+  "platformUrl": "https://w.tv",
+  "sourceUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/main/PluginConfig.json",
+  "repositoryUrl": "https://github.com/MarianQQQ/grayjay-wtv",
+  "scriptUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/main/PluginScript.js",
+  "version": 22,
+  "iconUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/main/icon.png",
+  "id": "ed2a9434-f6c7-4558-8ecc-5da9723e9fe1",
+  "scriptSignature": "idmvdQk6qwqIHc6QTUf5IEzFSVogJ0/Ei3H/n05cCD2Kqmo9s7R5DprMIdvhiZd20X6b5WdWQZJE5286jdgWiukh4+8kyg3VQLwn3pMMB3nWuGbFJVGcI5Ah6GniDf7oWQP6amTCb6mzViXcrcLNymdjFZ5KdcfQn6nVAV2JBpk/nvyqfvtv46W8XTpYd5Xzr9jnb6k46SWoWrMXSrHGuFOoimqn0jXEjGCCzutH2tJHL+EKlhYVQ1O9aPQAQ7lb4le8/zBphbNGaqLlush9um+1atKUj6r71e3xqLfOVCA3T5+ew/t1Hn/9LuubFQZalqmp50nq4brdR2Rh+wwh3g==",
+  "scriptPublicKey": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmXlh4isgNwxLyIqePQK7joP7gIGVn2aD317iwyTl3y51nJZYZGVumXeze7TH+DGc/DHoA3MjOP1M4vNRD1ovoSAqRLco0m/OXh+938EUNhHbgippLvyRS+5OKEnuVa6OjEtQrNFAP7mvU94l7YqEGiHrAMhhmvMSc7HtUC3J81vC7/6YVNcjKQqLYUTUNhcY9wxQIv8tiqJzfvzzsksr8TkFaA7UZ6sAlnvBGMoGAqW4QBqfT62K4QgL05e96V40DtfuGfvo4koxZCGIMYKPnPADZI4ew8kfgLFbdzu+MEJlPP4hamFsbCjU9qLbqyebOYSt9gAd22bLYHjygQ0b/QIDAQAB",
+  "packages": [
+    "Http",
+    "Utilities"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "w.tv",
+    "www.w.tv",
+    "auth-service.w.tv",
+    "profiles-service.w.tv",
+    "streams-search-service.w.tv",
+    "streams-service.w.tv",
+    "chats-service.w.tv",
+    "notifications-service.w.tv",
+    "telemetry.w.tv",
+    "files.w.tv",
+    "streams.w.tv",
+    "playback.live-video.net",
+    "auth.w.tv",
+    "api.w.tv"
+  ],
+  "authentication": {
+    "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36",
+    "loginUrl": "https://w.tv/",
+    "loginButton": "button[data-testid=\"enterMain\"]",
+    "completionUrl": "https://auth-service.w.tv/api/v1/signin",
+    "cookiesToFind": [
+      "isAuth"
+    ]
+  },
+  "settings": []
+}
