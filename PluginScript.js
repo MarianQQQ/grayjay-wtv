@@ -1,628 +1,806 @@
-var PLATFORM = "w.tv";
-var PLATFORM_URL = "https://w.tv";
-var SEARCH_API_BASE = "https://streams-search-service.w.tv/api/v1";
-var PLUGIN_ID = "ed2a9434-f6c7-4558-8ecc-5da9723e9fe1";
-var PAGE_SIZE = 20;
+//* Constants
+const BASE_URL = 'https://kick.com/'
+const LANG = 'en'
+const PLATFORM = 'kick'
 
-var config = {};
-var _settings = {};
-var _isAuthenticated = false;
+const IS_DESKTOP = bridge.buildPlatform === "desktop";
 
-// ============================================================
-// HTTP helpers
-// ============================================================
+const USER_AGENT_FALLBACK = IS_DESKTOP
+    ? 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+    : 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.200 Mobile Safari/537.36';
+    
+const getUserAgent = () => bridge.authUserAgent ?? bridge.captchaUserAgent ?? USER_AGENT_FALLBACK;
 
-function getHeaders() {
-    return {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://w.tv/",
-        "Origin": "https://w.tv"
-    };
+const PLATFORM_CLAIMTYPE = 16;
+
+const IMPERSONATION_TARGET = IS_DESKTOP ? 'chrome136' : 'chrome131_android';
+const IS_IMPERSONATION_AVAILABLE = (typeof httpimp !== 'undefined');
+
+let config = {}
+let settings = {}
+
+//* Source
+source.enable = function (conf, setts) {
+    config = conf ?? {};
+    settings = setts ?? {};
+
+    if (IS_IMPERSONATION_AVAILABLE) {
+        const httpImpClient = httpimp.getDefaultClient(true);
+        if (httpImpClient.setDefaultImpersonateTarget) {
+            httpImpClient.setDefaultImpersonateTarget(IMPERSONATION_TARGET);
+        }
+    }
 }
-
-function safeParseJSON(str) {
-    if (!str) return null;
-    try { return JSON.parse(str); } catch (e) { return null; }
+source.getHome = function () {
+    return new HomePager({ page: 1, page_size: 20 })
 }
+source.searchSuggestions = function (query) {
+    const gql = { searches: [{ preset: 'channel_search', q: query }] }
 
-function doGET(url) {
+    /** @type {import("./types.d.ts").MultiSearchResponse} */
+    const result = http.POST('https://search.kick.com/multi_search', JSON.stringify(gql), {
+        'Content-Type': 'application/json',
+        'User-Agent': getUserAgent(),
+        Accept: 'application/json',
+        Host: 'search.kick.com',
+        Origin: 'https://kick.com',
+        Referer: 'https://kick.com/',
+        'X-TYPESENSE-API-KEY': 'nXIMW0iEN6sMujFYjFuhdrSwVow3pDQu',
+    })
+
+    let json;
     try {
-        var resp = http.GET(url, getHeaders(), false);
-        if (resp && resp.code === 200 && resp.body) {
-            return safeParseJSON(resp.body);
-        }
-    } catch (e) {}
-    return null;
-}
-
-function doAuthGET(url) {
-    if (!_isAuthenticated) return doGET(url);
-    try {
-        var resp = http.GET(url, getHeaders(), true);
-        if (resp && resp.code === 200 && resp.body) {
-            return safeParseJSON(resp.body);
-        }
-    } catch (e) {}
-    return doGET(url);
-}
-
-// ============================================================
-// URL helpers
-// ============================================================
-
-function extractStreamId(url) {
-    if (!url) return null;
-    var m = url.match(/\/stream[s]?\/([0-9a-fA-F-]+)/i);
-    if (m) return m[1];
-    var m2 = url.match(/^[0-9a-fA-F-]{36}$/);
-    if (m2) return url;
-    return null;
-}
-
-function extractUsername(url) {
-    if (!url) return null;
-    if (extractStreamId(url)) return null;
-    var clean = url.replace(/^https?:\/\//i, "").replace(/^(www\.)?w\.tv\/?/i, "");
-    var parts = clean.split(/[/?#]/);
-    var slug = "";
-    for (var i = 0; i < parts.length; i++) {
-        if (parts[i].length > 0) { slug = parts[i]; break; }
-    }
-    if (!slug) return null;
-    if (slug.charAt(0) === "@") slug = slug.substring(1);
-    var bl = ["login","signup","register","about","terms","privacy","rules","support","help","settings","explore","categories","category","static","assets","api","favicon.ico","stream","streams"];
-    for (var j = 0; j < bl.length; j++) {
-        if (slug.toLowerCase() === bl[j]) return null;
-    }
-    return slug;
-}
-
-function pid() {
-    return config.id || PLUGIN_ID;
-}
-
-// ============================================================
-// Video/Channel builders
-// ============================================================
-
-function buildStreamVideo(title, streamId, channelId, channelName, channelAvatar, thumbnailUrl, viewers, startedAt) {
-    var chUrl = PLATFORM_URL + "/" + channelName;
-    var thumbs = [];
-    if (thumbnailUrl) thumbs.push(new Thumbnail(thumbnailUrl, 1080));
-    if (channelAvatar) thumbs.push(new Thumbnail(channelAvatar, 720));
-    if (thumbs.length === 0) thumbs.push(new Thumbnail(PLATFORM_URL + "/favicon.ico", 128));
-
-    var ts = 0;
-    if (startedAt) {
-        try { ts = Math.floor(new Date(startedAt).getTime() / 1000); } catch (e) {}
-    }
-    if (!ts) ts = Math.floor(Date.now() / 1000);
-
-    return new PlatformVideo({
-        id: new PlatformID(PLATFORM, streamId || channelName, pid()),
-        name: title || channelName + " Live",
-        thumbnails: new Thumbnails(thumbs),
-        author: new PlatformAuthorLink(
-            new PlatformID(PLATFORM, channelId || channelName, pid()),
-            channelName,
-            chUrl,
-            channelAvatar || PLATFORM_URL + "/favicon.ico"
-        ),
-        datetime: ts,
-        duration: 0,
-        viewCount: viewers || 0,
-        url: chUrl,
-        isLive: true
-    });
-}
-
-function streamToPlatformVideo(st, channelName, channelAvatar, channelId) {
-    var sId = st.streamId;
-    var title = st.title || (channelName + " Stream");
-    var duration = 0;
-    if (st.startedAt && st.finishedAt) {
-        try {
-            duration = Math.max(0, Math.floor((new Date(st.finishedAt).getTime() - new Date(st.startedAt).getTime()) / 1000));
-        } catch (e) {}
-    }
-    var ts = 0;
-    if (st.startedAt) {
-        try { ts = Math.floor(new Date(st.startedAt).getTime() / 1000); } catch (e) {}
-    }
-    if (!ts) ts = Math.floor(Date.now() / 1000);
-
-    var thumbs = [];
-    if (st.thumbnailUrl) thumbs.push(new Thumbnail(st.thumbnailUrl, 720));
-    if (channelAvatar && channelAvatar !== PLATFORM_URL + "/favicon.ico") thumbs.push(new Thumbnail(channelAvatar, 480));
-    if (thumbs.length === 0) thumbs.push(new Thumbnail(PLATFORM_URL + "/favicon.ico", 128));
-
-    var isLive = st.state === "started";
-    var chUrl = PLATFORM_URL + "/" + channelName;
-    var streamUrl = PLATFORM_URL + "/stream/" + sId;
-
-    return new PlatformVideo({
-        id: new PlatformID(PLATFORM, sId, pid()),
-        name: title,
-        thumbnails: new Thumbnails(thumbs),
-        author: new PlatformAuthorLink(
-            new PlatformID(PLATFORM, channelId || channelName, pid()),
-            channelName,
-            chUrl,
-            channelAvatar || PLATFORM_URL + "/favicon.ico"
-        ),
-        datetime: ts,
-        duration: duration,
-        viewCount: st.views || 0,
-        url: streamUrl,
-        isLive: isLive
-    });
-}
-
-function buildChannel(channelId, name, imageUrl, followers, isLive) {
-    return new PlatformChannel({
-        id: new PlatformID(PLATFORM, channelId || name, pid()),
-        name: name,
-        thumbnail: imageUrl || PLATFORM_URL + "/favicon.ico",
-        banner: "",
-        subscribers: followers || 0,
-        description: isLive ? "LIVE" : "",
-        url: PLATFORM_URL + "/" + name,
-        links: {}
-    });
-}
-
-function streamFromData(st) {
-    if (!st || !st.channel) return null;
-    return buildStreamVideo(
-        st.title,
-        st.streamId,
-        st.channel.channelId,
-        st.channel.name || "Unknown",
-        st.channel.imageUrl,
-        st.thumbnailUrl,
-        st.viewers,
-        st.startedAt
-    );
-}
-
-// ============================================================
-// Channel data fetcher
-// ============================================================
-
-function fetchChannel(username) {
-    var info = {
-        channelId: null, name: username, title: username + " Live",
-        desc: "", avatar: PLATFORM_URL + "/favicon.ico", thumb: "",
-        hlsUrl: null, viewers: 0, followers: 0, isLive: false
-    };
-
-    var json = doGET(SEARCH_API_BASE + "/search?text=" + encodeURIComponent(username));
-    if (!json || !json.channels) return info;
-
-    var ch = null;
-    for (var i = 0; i < json.channels.length; i++) {
-        if (json.channels[i].name && json.channels[i].name.toLowerCase() === username.toLowerCase()) {
-            ch = json.channels[i]; break;
-        }
-    }
-    if (!ch && json.channels.length > 0) ch = json.channels[0];
-    if (!ch) return info;
-
-    info.channelId = ch.channelId || null;
-    info.name = ch.name || username;
-    info.avatar = ch.imageUrl || info.avatar;
-    info.followers = ch.followers || 0;
-    info.isLive = !!ch.live;
-
-    if (ch.liveStream) {
-        info.hlsUrl = ch.liveStream.playbackUrl || null;
-        info.title = ch.liveStream.title || info.title;
-        info.viewers = ch.liveStream.viewers || 0;
-        info.thumb = ch.liveStream.thumbnailUrl || "";
-        info.isLive = true;
-    }
-
-    if (info.channelId && !info.hlsUrl) {
-        var dJson = doGET(SEARCH_API_BASE + "/channels/" + info.channelId + "?user_lang=en&platform=web");
-        if (dJson && dJson.channel) {
-            var dc = dJson.channel;
-            if (dc.liveStream) {
-                info.hlsUrl = dc.liveStream.playbackUrl || info.hlsUrl;
-                info.title = dc.liveStream.title || info.title;
-                info.viewers = dc.liveStream.viewers || info.viewers;
-                info.thumb = dc.liveStream.thumbnailUrl || info.thumb;
-                info.isLive = true;
-            }
-            if (dc.imageUrl) info.avatar = dc.imageUrl;
-            if (dc.followers) info.followers = dc.followers;
-        }
-    }
-
-    return info;
-}
-
-// ============================================================
-// Pager helpers for pagination
-// ============================================================
-
-function HomeVideoPager(results, hasMore, context) {
-    this.results = results;
-    this._hasMore = hasMore;
-    this._context = context;
-}
-HomeVideoPager.prototype = Object.create(VideoPager.prototype);
-HomeVideoPager.prototype.hasMorePagers = function() { return this._hasMore; };
-HomeVideoPager.prototype.nextPage = function() {
-    if (!this._context || !this._context.cursor) return new VideoPager([], false, null);
-    var url = SEARCH_API_BASE + "/streams?user_lang=en&platform=web&limit=" + PAGE_SIZE + "&cursor=" + encodeURIComponent(this._context.cursor);
-    var json = doGET(url);
-    if (!json) return new VideoPager([], false, null);
-
-    var streams = json.data || [];
-    var items = [];
-    for (var i = 0; i < streams.length; i++) {
-        var v = streamFromData(streams[i]);
-        if (v) items.push(v);
-    }
-    var nextCursor = json.cursor || null;
-    return new HomeVideoPager(items, !!nextCursor && items.length > 0, { cursor: nextCursor });
-};
-
-function ChannelVideoPager(channelId, channelName, channelAvatar, results, hasMore, cursor) {
-    this.channelId = channelId;
-    this.channelName = channelName;
-    this.channelAvatar = channelAvatar;
-    this.results = results;
-    this._hasMore = hasMore;
-    this._cursor = cursor;
-}
-ChannelVideoPager.prototype = Object.create(VideoPager.prototype);
-ChannelVideoPager.prototype.hasMorePagers = function() { return this._hasMore; };
-ChannelVideoPager.prototype.nextPage = function() {
-    if (!this._cursor || !this.channelId) return new VideoPager([], false, null);
-    var url = SEARCH_API_BASE + "/channels/" + this.channelId + "/streams?user_lang=en&platform=web&limit=20&cursor=" + encodeURIComponent(this._cursor);
-    var json = doGET(url);
-    if (!json) return new VideoPager([], false, null);
-
-    var streams = json.data || [];
-    var items = [];
-    for (var i = 0; i < streams.length; i++) {
-        var v = streamToPlatformVideo(streams[i], this.channelName, this.channelAvatar, this.channelId);
-        if (v) items.push(v);
-    }
-    var nextCursor = json.cursor || null;
-    return new ChannelVideoPager(this.channelId, this.channelName, this.channelAvatar, items, !!nextCursor && items.length > 0, nextCursor);
-};
-
-// ============================================================
-// source.* implementations
-// ============================================================
-
-source.enable = function(conf, settings, savedState) {
-    config = conf || {};
-    _settings = settings || {};
-    try {
-        _isAuthenticated = !!bridge.isLoggedIn();
+        json = JSON.parse(result.body)
     } catch (e) {
-        _isAuthenticated = false;
-    }
-};
-
-source.disable = function() {};
-
-source.saveState = function() { return "{}"; };
-
-// ---------- Home ----------
-
-source.getHome = function() {
-    var json = doGET(SEARCH_API_BASE + "/streams?user_lang=en&platform=web&limit=" + PAGE_SIZE);
-    if (!json) return new VideoPager([], false, null);
-
-    var streams = json.data || [];
-    var items = [];
-    for (var i = 0; i < streams.length; i++) {
-        var v = streamFromData(streams[i]);
-        if (v) items.push(v);
-    }
-    var nextCursor = json.cursor || null;
-    return new HomeVideoPager(items, !!nextCursor && items.length > 0, { cursor: nextCursor });
-};
-
-// ---------- Search ----------
-
-source.getSearchCapabilities = function() {
-    return { types: [Type.Feed.Mixed], sorts: [], filters: [] };
-};
-
-source.searchSuggestions = function(query) {
-    if (!query || query.length < 2) return [];
-    var json = doGET(SEARCH_API_BASE + "/search?text=" + encodeURIComponent(query));
-    if (!json || !json.channels) return [];
-
-    var suggestions = [];
-    var channels = json.channels;
-    for (var i = 0; i < channels.length && i < 8; i++) {
-        if (channels[i].name) suggestions.push(channels[i].name);
-    }
-    return suggestions;
-};
-
-source.search = function(query, type, order, filters) {
-    if (!query || query.length === 0) return new VideoPager([], false, null);
-
-    var results = [];
-    var json = doGET(SEARCH_API_BASE + "/search?text=" + encodeURIComponent(query));
-    if (!json) return new VideoPager([], false, null);
-
-    // Live channels first
-    var channels = json.channels || [];
-    for (var i = 0; i < channels.length; i++) {
-        var ch = channels[i];
-        var chName = ch.name || "Unknown";
-        var chAvatar = ch.imageUrl || PLATFORM_URL + "/favicon.ico";
-
-        if (ch.live && ch.liveStream) {
-            results.push(buildStreamVideo(
-                ch.liveStream.title,
-                ch.liveStream.streamId || ch.channelId,
-                ch.channelId, chName, chAvatar,
-                ch.liveStream.thumbnailUrl,
-                ch.liveStream.viewers,
-                ch.liveStream.startedAt
-            ));
-        }
+        log('Failed to parse search suggestions response: ' + e);
+        return []
     }
 
-    // Stream results
-    var streams = json.streams || [];
-    for (var j = 0; j < streams.length; j++) {
-        var v = streamFromData(streams[j]);
-        if (v) results.push(v);
+    return (json?.results?.[0]?.hits ?? [])
+    .map((h) => h.document.username)
+}
+source.getSearchCapabilities = () => {
+    return { types: [Type.Feed.Mixed], sorts: [], filters: [] }
+}
+source.search = function (query, type, order, filters) {
+    return new VideoPager()
+}
+source.getSearchChannelContentsCapabilities = function () {
+    return { types: [Type.Feed.Mixed], sorts: [Type.Order.Chronological], filters: [] }
+}
+// not in Kick
+source.searchChannelContents = function (channelUrl, query, type, order, filters) {
+    return []
+}
+source.searchChannels = function (query) {
+    return new SearchPagerChannels(query)
+}
+source.isChannelUrl = function (url) {
+    return /kick\.com\/[a-zA-Z0-9-_]+\/?/.test(url)
+}
+source.getChannel = function (url) {
+    const login = extractUsername(url)
+
+    /** @type {import("./types.d.ts").ChannelResponse} */
+    const j = callUrl(`https://kick.com/api/v1/channels/${login}`)
+   
+    const links = {};
+
+    const propertMaps = {
+        'instagram':  {
+            urlPrefix: 'https://instagram.com/',
+            displayName: 'Instagram',
+        },
+        'twitter':  {
+            urlPrefix: 'https://x.com/',
+            displayName: 'X',
+        },
+        'youtube':  {
+            urlPrefix: 'https://youtube.com/',
+            displayName: 'Youtube',
+        },
+        'discord':  {
+            urlPrefix: 'https://discord.gg/',
+            displayName: 'Discord',
+        },
+        'tiktok':  {
+            urlPrefix: 'https://tiktok.com/@',
+            displayName: 'Tiktok',
+        },
+        'facebook':  {
+            urlPrefix: 'https://facebook.com/',
+            displayName: 'Facebook',
+        },
     }
 
-    return new VideoPager(results, false, null);
-};
+    for (const key in propertMaps) {
+        
+        let externalUrlProperty = j?.user?.[key];
+        
+        if (externalUrlProperty) {
 
-// ---------- Search Channels (Creators tab) ----------
+            let externalUrl = '';
 
-source.searchChannels = function(query) {
-    if (!query || query.length === 0) return new ChannelPager([], false, null);
-
-    var json = doGET(SEARCH_API_BASE + "/search?text=" + encodeURIComponent(query));
-    if (!json) return new ChannelPager([], false, null);
-
-    var results = [];
-    var channels = json.channels || [];
-    for (var i = 0; i < channels.length; i++) {
-        var ch = channels[i];
-        results.push(buildChannel(ch.channelId, ch.name || "Unknown", ch.imageUrl, ch.followers, ch.live));
-    }
-
-    return new ChannelPager(results, false, null);
-};
-
-source.getSearchChannelContentsCapabilities = function() {
-    return { types: [Type.Feed.Mixed], sorts: [], filters: [] };
-};
-
-// ---------- Channel ----------
-
-source.isChannelUrl = function(url) {
-    return extractUsername(url) !== null;
-};
-
-source.getChannel = function(url) {
-    var username = extractUsername(url);
-    if (!username) throw new ScriptException("InvalidUrl", "Bad channel URL");
-
-    var data = fetchChannel(username);
-    return buildChannel(data.channelId || username, data.name || username, data.avatar, data.followers, data.isLive);
-};
-
-source.getChannelContents = function(url) {
-    var username = extractUsername(url);
-    if (!username) return new VideoPager([], false, null);
-
-    var data = fetchChannel(username);
-    var results = [];
-
-    // 1. If currently live, show active live stream at the top
-    if (data.isLive && data.hlsUrl) {
-        results.push(buildStreamVideo(
-            data.title, data.channelId, data.channelId,
-            data.name || username, data.avatar, data.thumb, data.viewers, null
-        ));
-    }
-
-    // 2. Fetch past recordings (streams)
-    if (data.channelId) {
-        var streamsUrl = SEARCH_API_BASE + "/channels/" + data.channelId + "/streams?user_lang=en&platform=web&limit=20";
-        var json = doGET(streamsUrl);
-        if (json && json.data) {
-            for (var i = 0; i < json.data.length; i++) {
-                var st = json.data[i];
-                if (data.isLive && st.state === "started") continue;
-                var v = streamToPlatformVideo(st, data.name || username, data.avatar, data.channelId);
-                if (v) results.push(v);
+            // check if it's an absolute url
+            if(/^https:\/\//i.test(externalUrlProperty)) {
+                externalUrl = externalUrlProperty;
             }
-            var cursor = json.cursor || null;
-            return new ChannelVideoPager(data.channelId, data.name || username, data.avatar, results, !!cursor && results.length > 0, cursor);
+            else {
+                externalUrl = propertMaps[key].urlPrefix + externalUrlProperty;
+            }
+
+            links[propertMaps[key].displayName] = externalUrl;
         }
     }
 
-    return new VideoPager(results, false, null);
-};
+    return new PlatformChannel({
+        id: new PlatformID(PLATFORM, j.id.toString(), config.id, PLATFORM_CLAIMTYPE),
+        name: j.user.username,
+        thumbnail: j.user.profile_pic,
+        banner: j.banner_image?.url,
+        subscribers: j.followersCount,
+        description: j.user.bio,
+        url: BASE_URL + j.slug,
+        links,
+    })
+}
+source.getChannelContents = function (url, type, order, filters) {
+    return new ChannelVideoPager({ url, page_size: 20, cursor: null })
+}
 
-source.getChannelCapabilities = function() {
-    return { types: [Type.Feed.Mixed], sorts: [], filters: [] };
-};
-
-// ---------- Search within Channel ----------
-
-source.searchChannelVideos = function(channelUrl, query, type, order, filters) {
-    return source.getChannelContents(channelUrl);
-};
-
-source.getSearchChannelVideoCapabilities = function() {
-    return { types: [Type.Feed.Mixed], sorts: [], filters: [] };
-};
-
-// ---------- Video / Content Details ----------
-
-source.isContentDetailsUrl = function(url) {
-    return extractStreamId(url) !== null || extractUsername(url) !== null;
-};
-
-source.isVideoDetailsUrl = function(url) {
-    return source.isContentDetailsUrl(url);
-};
-
-source.getContentDetails = function(url) {
-    var streamId = extractStreamId(url);
-    if (streamId) {
-        var json = doGET(SEARCH_API_BASE + "/streams/" + streamId + "?user_lang=en&platform=web");
-        if (!json || !json.stream) {
-            throw new ScriptException("NotFound", "Stream not found");
+source.getChannelTemplateByClaimMap = () => {
+    return {
+        //Kick
+        16: {
+            0: BASE_URL + "{{CLAIMVALUE}}"
         }
-        var s = json.stream;
-        if (!s.playbackUrl) {
-            throw new ScriptException("NoPlaybackUrl", "No playback URL for this stream");
-        }
-        var ch = s.channel || {};
-        var chName = ch.name || "Unknown";
-        var chAvatar = ch.imageUrl || PLATFORM_URL + "/favicon.ico";
-        var chUrl = PLATFORM_URL + "/" + chName;
-        var streamUrl = PLATFORM_URL + "/stream/" + s.streamId;
+    };
+};
 
-        var duration = 0;
-        if (s.startedAt && s.finishedAt) {
-            try {
-                duration = Math.max(0, Math.floor((new Date(s.finishedAt).getTime() - new Date(s.startedAt).getTime()) / 1000));
-            } catch (e) {}
-        }
-        var ts = 0;
-        if (s.startedAt) {
-            try { ts = Math.floor(new Date(s.startedAt).getTime() / 1000); } catch (e) {}
-        }
-        if (!ts) ts = Math.floor(Date.now() / 1000);
+source.isContentDetailsUrl = function (url) {
+    // https://kick.com/user or https://kick.com/username/videos/uuid
+    return /kick\.com\/[a-zA-Z0-9-_]+\/?$/.test(url) || /kick\.com\/[a-zA-Z0-9-_]+\/videos\/[a-zA-Z0-9-_]+\/?/.test(url)
+}
+source.getContentDetails = function (url) {
 
-        var thumbs = [];
-        if (s.thumbnailUrl) thumbs.push(new Thumbnail(s.thumbnailUrl, 1080));
-        if (chAvatar && chAvatar !== PLATFORM_URL + "/favicon.ico") thumbs.push(new Thumbnail(chAvatar, 720));
-        if (thumbs.length === 0) thumbs.push(new Thumbnail(PLATFORM_URL + "/favicon.ico", 128));
+    let videoDetails;
 
-        var isLive = s.state === "started";
-        var hlsSrc = new HLSSource({ name: "HLS", duration: duration, url: s.playbackUrl });
+    if (url.includes('/videos/')) {
+        videoDetails = getSavedVideo(url)
+    } else {
+        videoDetails = getLiveVideo(url)
+    }
 
-        var descriptor;
-        var liveProp;
-        if (isLive) {
-            descriptor = new VideoSourceDescriptor([]);
-            liveProp = hlsSrc;
-        } else {
-            descriptor = new VideoSourceDescriptor([hlsSrc]);
-            liveProp = null;
-        }
+    // Legacy VOD links resolve to a new-id URL, which is what the recommendations list uses
+    videoDetails.getContentRecommendations = function() {
+		return source.getContentRecommendations(videoDetails.url);
+	};
 
-        return new PlatformVideoDetails({
-            id: new PlatformID(PLATFORM, s.streamId, pid()),
-            name: s.title || (chName + " Stream"),
-            thumbnails: new Thumbnails(thumbs),
-            author: new PlatformAuthorLink(
-                new PlatformID(PLATFORM, ch.channelId || chName, pid()),
-                chName, chUrl, chAvatar
-            ),
-            datetime: ts,
-            duration: duration,
-            viewCount: s.views || 0,
-            url: streamUrl,
-            isLive: isLive,
-            description: s.description || "",
-            video: descriptor,
-            live: liveProp,
-            subtitles: []
+    return videoDetails;
+}
+source.getUserSubscriptions = function () {
+    /** @type {import("./types.d.ts").FollowedChannelResponse} */
+    const j = httpGET({ url: 'https://kick.com/api/v2/channels/followed?cursor=0', useAuthenticated: true })
+
+    return j.channels.map((c) => BASE_URL + c.channel_slug)
+}
+
+source.getContentRecommendations = function (url) {
+
+    if (url.includes('/videos/')) {
+        const username = extractUsername(url);
+        const channelUrl = BASE_URL + username;
+        const pager = source.getChannelContents(channelUrl);
+
+        // remove the current video
+        pager.results = pager.results.filter((v) => v.url !== url);
+
+        return pager;
+    } else {
+        const res = httpGET({ 
+            url: 'https://web.kick.com/api/v1/livestreams/featured?language=en', 
+            useAuthenticated: false, 
+            parseResponse: true, 
+            retries: 4, 
+            headers: {
+                Accept: 'application/json',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Alt-Used': 'web.kick.com',
+                'Cache-Control': 'no-cache',
+                Connection: 'keep-alive',
+                Origin: 'https://kick.com',
+                Pragma: 'no-cache',
+                Priority: 'u=4',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-site',
+                'Sec-GPC': '1',
+                TE: 'trailers',
+                'User-Agent': getUserAgent(),
+            }
         });
+        
+        const results = (res?.data?.livestreams ?? [])
+        ?.map((l) => streamToPlatformVideo(l))
+        ?.filter((l) => l?.url != url); // remove the current video
+        
+        return new VideoPager(results, false);
+    }
+}
+
+source.getComments = function (url) {
+    return new CommentPager([], false, {}) //Not implemented
+}
+source.getSubComments = function (comment) {
+    return new CommentPager([], false, {}) //Not implemented
+}
+source.getLiveChatWindow = function(url) {
+    const login = extractUsername(url)
+    return {
+        url: "https://kick.com/popout/" + login + "/chat",
+    };
+}
+source.getLiveEvents = function (url) {
+    const login = extractUsername(url)
+
+    return new LiveEventPagerHelper(login)
+}
+//* Internals
+/**
+ * Extracts the username from a Kick URL
+ * @param {string} url - The URL to extract username from
+ * @returns {string} The username
+ */
+function extractUsername(url) {
+    // Match kick.com/username/videos/uuid
+    let match = url.match(/kick\.com\/([a-zA-Z0-9-_]+)\/videos\/[a-zA-Z0-9-_]+/);
+    if (match) {
+        return match[1];
+    }
+    
+    // Match kick.com/username or kick.com/username/
+    match = url.match(/kick\.com\/([a-zA-Z0-9-_]+)\/?$/);
+    if (match) {
+        return match[1];
+    }
+    
+    // If no match, fallback to the old method as safety
+    return url.split('/').pop();
+}
+
+/**
+ * Simple wrapper for making GET requests to Kick API endpoints
+ * @param {string} url - The URL to fetch
+ * @returns {Object} The parsed JSON response
+ * @throws {ScriptException} If the request fails or returns an error
+ */
+function callUrl(url) {
+    return httpGET({ url })
+}
+
+/**
+ * Gets the requested url and returns the response body either as a string or as a parsed json object.
+ * Cascades through http -> httpimp based on settings.
+ * @param {Object} options - The options object
+ * @param {string} options.url - The URL to call
+ * @param {boolean} [options.useAuthenticated=false] - If true, will use the authenticated headers
+ * @param {boolean} [options.parseResponse=true] - If true, will parse the response as json and check for errors
+ * @param {number} [options.retries=3] - Number of retry attempts
+ * @param {Object} [options.headers=null] - Custom headers to use for the request
+ * @returns {string | Object} the response body as a string or the parsed json object
+ * @throws {ScriptException}
+ */
+function httpGET(options) {
+    const {
+        url,
+        useAuthenticated = false,
+        parseResponse = true,
+        retries = 3,
+        headers = null
+    } = options;
+
+    const baseHeaders = headers ?? {
+        Accept: 'application/json',
+        DNT: '1',
+        Referer: 'https://kick.com/',
+    }
+    // Only set User-Agent for standard http; httpimp sets its own to match TLS fingerprint
+    const httpHeaders = { 'User-Agent': getUserAgent(), ...baseHeaders }
+
+    function parseBody(resp) {
+        if (parseResponse) {
+            const json = JSON.parse(resp.body)
+            if (json.errors) {
+                throw new ScriptException(json.errors[0].message)
+            }
+            return json
+        }
+        return resp.body
     }
 
-    var username = extractUsername(url);
-    if (!username) throw new ScriptException("InvalidUrl", "Bad URL");
-
-    var data = fetchChannel(username);
-    var chUrl = PLATFORM_URL + "/" + username;
-
-    if (!data.hlsUrl) {
-        throw new ScriptException("StreamOffline", username + " is offline");
+    function tryClient(client, label, attempts, reqHeaders) {
+        let lastError;
+        let captchaError = null;
+        while (attempts > 0) {
+            try {
+                const resp = client.GET(url, reqHeaders, useAuthenticated)
+                if (!resp.isOk) {
+                    throwIfCaptcha(resp);
+                    throw new ScriptException("Request [" + url + "] failed with code [" + resp.code + "]")
+                }
+                verbose("[" + label + "] OK: " + url);
+                return parseBody(resp);
+            } catch (error) {
+                if (error instanceof CaptchaRequiredException) {
+                    verbose("[" + label + "] Captcha: " + url);
+                    captchaError = error;
+                } else {
+                    lastError = error;
+                }
+                attempts--;
+                if (attempts > 0) {
+                    verbose("[" + label + "] Retry (" + attempts + " left): " + url);
+                }
+            }
+        }
+        verbose("[" + label + "] Failed: " + url);
+        if (captchaError) throw captchaError;
+        throw lastError;
     }
 
-    var hlsSrc = new HLSSource({ name: "HLS Live", duration: 0, url: data.hlsUrl });
+    const useHttp = settings.useHttp !== false;
+    const useRetries = settings.useRequestRetries !== false;
+    const useImp = settings.useHttpImpersonation !== false && IS_IMPERSONATION_AVAILABLE;
 
-    var thumbs = [];
-    if (data.thumb) thumbs.push(new Thumbnail(data.thumb, 1080));
-    if (data.avatar) thumbs.push(new Thumbnail(data.avatar, 720));
-    if (thumbs.length === 0) thumbs.push(new Thumbnail(PLATFORM_URL + "/favicon.ico", 128));
+    let captchaError = null;
+    let lastError = null;
+    // 1. Try http with retries
+    if (useHttp) {
+        try {
+            return tryClient(http, 'http', useRetries ? retries + 1 : 1, httpHeaders);
+        } catch (e) {
+            if (e instanceof CaptchaRequiredException) captchaError = e;
+            else lastError = e;
+        }
+    }
+    // 2. Try httpimp if available
+    if (useImp) {
+        try {
+            return tryClient(httpimp, 'httpimp', 1, baseHeaders);
+        } catch (e) {
+            if (e instanceof CaptchaRequiredException) captchaError = e;
+            else lastError = e;
+        }
+    }
+    if (captchaError) throw captchaError;
+    throw lastError || new ScriptException("All request methods failed for: " + url);
+}
+
+/**
+ * Returns a saved video
+ * @param {string} url
+ * @returns {PlatformVideoDetails}
+ */
+function getSavedVideo(url) {
+    const id = url.match(/\/videos\/([a-zA-Z0-9-_]+)/)[1]
+
+    // kick.com links carry the new UUIDv7 VOD id; the v1 video API only accepts the legacy uuid
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-7/i.test(id)) {
+        /** @type {import("./types.d.ts").ChannelResponse} */
+        const channel = callUrl(`https://kick.com/api/v1/channels/${extractUsername(url)}`)
+        /** @type {import("./types.d.ts").WebVideoResponse} */
+        const res = callUrl(`https://web.kick.com/api/v1/channels/${channel.id}/videos/${id}`)
+
+        return webVideoToPlatformVideoDetails(res.data, channel)
+    }
+
+    /** @type {import("./types.d.ts").VideoResponse}*/
+    const j = callUrl(`https://kick.com/api/v1/video/${id}`)
+
+    return savedVideoToPlatformVideo(j)
+}
+/**
+ * Returns a live video
+ * @param {string} url
+ * @param {boolean} throw_if_not_live
+ * @returns {PlatformVideoDetails}
+ */
+function getLiveVideo(url, throw_if_not_live = true) {
+    const login = extractUsername(url)
+
+    /** @type {import("./types.d.ts").ChannelResponse} */
+    const j = callUrl(`https://kick.com/api/v2/channels/${login}`)
+
+    if (j.livestream === null) {
+        if (throw_if_not_live) {
+            throw new UnavailableException('Channel is not live')
+        }
+        return null
+    }
+
+    return liveVideoToPlatformVideo(j)
+}
+//* Pagers
+class HomePager extends VideoPager {
+    /**
+     * @param {import("./types.d.ts").HomeContext} context
+     */
+    constructor(context) {
+        /** @type {import("./types.d.ts").FeaturedStreamResponse} */
+        const json = httpGET({
+            url: `https://web.kick.com/api/v1/livestreams?page=${context.page}&limit=${context.page_size}&sort=featured_home&language=${LANG}`
+        })
+
+        const results = (json?.data?.livestreams ?? json?.data ?? []).map((s) => streamToPlatformVideo(s))
+        const hasMore = !!(json?.data?.pagination?.next_cursor ?? json?.next_page_url)
+
+        super(results, hasMore, context)
+    }
+
+    nextPage() {
+        this.context.page++
+        return new HomePager(this.context)
+    }
+}
+class SearchPagerChannels extends ChannelPager {
+    /**
+     * Search channels
+     * @param {string} query
+     */
+    constructor(query) {
+        /** @type {import("./types.d.ts").SearchResponse} */
+        const j = callUrl(`https://kick.com/api/search?searched_word=${encodeURIComponent(query)}`)
+
+        const results = j.channels.map((u) => searchChannelToPlatformChannel(u))
+
+        super(results, false, { query })
+    }
+}
+/**
+ *
+ * @param {string | Object} msg
+ * @returns {{message: LiveEventComment, emojis: {[key: string]: string}}}
+ */
+function parseMessage(msg) {
+    if (typeof msg === 'string') {
+        msg = JSON.parse(msg)
+    }
+
+    /** @type {import("./types.d.ts").ChatroomMessage} */
+    const data = msg
+    // example with emotes: "Yes [emote:37233:PogU]" or "Yes [emote:37233:]"
+    let content = data.content
+
+    let emojis = {}
+
+    // replace emotes with __https://files.kick.com/emotes/{id}/fullsize__
+    const replaced = content.replace(/\[emote:(\d+)(?::(\w*))?\]/g, (match, id, name) => {
+        const url = `https://files.kick.com/emotes/${id}/fullsize`
+        emojis['emoji_' + id] = url
+        return `__emoji_${id}__`
+    })
+
+    const lec = new LiveEventComment(data.sender.username, replaced, '', data.sender.identity.color)
+
+    return { message: lec, emojis }
+}
+class LiveEventPagerHelper extends LiveEventPager {
+    /**
+     * @param {string} channel_login
+     */
+    constructor(channel_login) {
+        super([], true)
+        const me = this
+
+        /** @type {import("./types.d.ts").ChannelResponse} */
+        const resp = callUrl(`https://kick.com/api/v2/channels/${channel_login}`)
+    
+        /** @type {import("./types.d.ts").PrepopulateChatResponse}*/
+        const j = callUrl(`https://kick.com/api/v2/channels/${resp.id}/messages`)
+    
+        const parsed = (j?.data?.messages ?? []).map((m) => parseMessage(m))
+        const flat_map_emojis = parsed.flatMap((m) => m.emojis).filter((e) => e != {})
+        let emojis = {}
+        for (const emoji of flat_map_emojis) {
+            emojis = { ...emojis, ...emoji }
+        }
+        this.emojis = emojis
+        this.events = parsed.map((m) => m.message)
+        this.lastFetch = new Date().getTime()
+
+        let socket = http.socket(
+            'wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0&flash=false',
+            {},
+            false
+        )
+        socket.connect({
+            open() {
+                socket.send(`{"event":"pusher:subscribe","data":{"auth":"","channel":"chatrooms.${resp.chatroom.id}.v2"}}`)
+            },
+            message(msg) {
+                if ((new Date().getTime() - me.lastFetch) / 1000 > 10) socket.close()
+                // {"event":"App\\Events\\ChatMessageEvent","data":"{\"id\":\"acfc6ccc-c39b-4929-9911-e49867325b76\",\"chatroom_id\":32806,\"content\":\"[emote:37226:KEKW]\",\"type\":\"message\",\"created_at\":\"2023-07-14T21:10:02+00:00\",\"sender\":{\"id\":228242,\"username\":\"izzywrotethis\",\"slug\":\"izzywrotethis\",\"identity\":{\"color\":\"#F2708A\",\"badges\":[{\"type\":\"moderator\",\"text\":\"Moderator\"},{\"type\":\"subscriber\",\"text\":\"Subscriber\",\"count\":3}]}}}","channel":"chatrooms.32806.v2"}
+                /** @type {import("./types.d.ts").ChatroomMessageResponse} */
+                const parsed = JSON.parse(msg)
+                if (parsed.event === 'App\\Events\\ChatMessageEvent') {
+                    const { message, emojis } = parseMessage(parsed.data)
+                    me.events.push(message)
+                    me.emojis = { ...me.emojis, ...emojis }
+                }
+            },
+        })
+    }
+    nextPage() {
+        this.lastFetch = new Date().getTime()
+        this.results = [new LiveEventEmojis(this.emojis), ...this.events]
+        this.emojis = {}
+        this.events = []
+        return this
+    }
+}
+class ChannelVideoPager extends VideoPager {
+    /**
+     * @param {import("./types.d.ts").URLContext} context the context
+     */
+    constructor(context) {
+        const login = extractUsername(context.url);
+        /** @type {import("./types.d.ts").ChannelResponse} */
+        const j = callUrl(`https://kick.com/api/v1/channels/${login}`)
+        /** @type {import("./types.d.ts").WebVideoListResponse} */
+        const videos = callUrl(`https://web.kick.com/api/v1/channels/${j.id}/videos`)
+
+        // the list includes the running stream, which is added below with its live source
+        let results = videos.data
+            .filter((v) => !v.is_live)
+            .map((v) => webVideoToPlatformVideo(v, j))
+
+        // no need for first time checks since kick does not paginate vods
+        const current_live = getLiveVideo(context.url, false)
+        if (current_live) results.unshift(current_live)
+
+        super(results, false, context)
+    }
+}
+//* Converters
+/**
+ * Converts a livestream to a PlatformVideo
+ * @param {import("./types.d.ts").ChannelResponse} j
+ * @returns {PlatformVideoDetails}
+ */
+/**
+ * Fetches the real-time full DVR recording stream for a live channel
+ * @param {string} slug 
+ * @param {number} [livestreamId] 
+ * @returns {string|null}
+ */
+function getLiveDvrSource(slug, livestreamId) {
+    try {
+        const res = callUrl('https://kick.com/api/v2/channels/' + slug + '/videos');
+        const videos = Array.isArray(res) ? res : (res && res.videos ? res.videos : []);
+        const liveVod = videos.find((v) => (v.is_live || (livestreamId && v.id === livestreamId)) && v.source);
+        if (liveVod && liveVod.source) {
+            return liveVod.source;
+        }
+    } catch (e) {
+        log('Failed to fetch live DVR stream: ' + e);
+    }
+    return null;
+}
+
+function liveVideoToPlatformVideo(j) {
+    let streamUrl = j.playback_url;
+    if (settings.useLiveDvr !== false) {
+        const dvrUrl = getLiveDvrSource(j.slug, j && j.livestream ? j.livestream.id : null);
+        if (dvrUrl) {
+            streamUrl = dvrUrl;
+        }
+    }
+
+    let streamDuration = (j && j.livestream && j.livestream.duration) ? j.livestream.duration : 0;
+    if (!streamDuration && j && j.livestream && j.livestream.created_at) {
+        try {
+            streamDuration = Math.max(0, Math.floor((Date.now() - new Date(j.livestream.created_at).getTime()) / 1000));
+        } catch (_) {}
+    }
+
+    
+    const thumbnails = j?.livestream?.thumbnail?.url ? [new Thumbnail(j.livestream.thumbnail.url, 0)] : [];
+    const streamTitle = j?.livestream?.session_title ?? j.user.username;
 
     return new PlatformVideoDetails({
-        id: new PlatformID(PLATFORM, data.channelId || username, pid()),
-        name: data.title || username + " Live",
-        thumbnails: new Thumbnails(thumbs),
+        id: new PlatformID(PLATFORM, j.livestream.id.toString(), config.id),
+        name: streamTitle,
+        thumbnails: new Thumbnails(thumbnails),
         author: new PlatformAuthorLink(
-            new PlatformID(PLATFORM, data.channelId || username, pid()),
-            data.name || username, chUrl, data.avatar
+            new PlatformID(PLATFORM, j.user_id.toString(), config.id, PLATFORM_CLAIMTYPE),
+            j.user.username,
+            BASE_URL + j.slug,
+            j.user.profile_pic
         ),
-        datetime: Math.floor(Date.now() / 1000),
-        duration: 0,
-        viewCount: data.viewers || 0,
-        url: chUrl,
+        uploadDate: (j.created_at) ? parseInt(new Date(j.created_at).getTime() / 1000) : parseInt(new Date().getTime() / 1000),
+        duration: streamDuration,
+        viewCount: j?.livestream?.viewer_count ?? 0,
+        url: BASE_URL + j.slug,
         isLive: true,
-        description: data.desc || "",
+        description: j?.user?.bio ?? '',
         video: new VideoSourceDescriptor([]),
-        live: hlsSrc,
-        subtitles: []
-    });
-};
+        live: new HLSSource({
+            name: 'live',
+            duration: 0,
+            url: streamUrl,
+            ...(settings.useStreamImpersonation !== false ? {
+                requestModifier: {
+                    options: {
+                        applyAuthClient: "",
+                        applyCookieClient: "",
+                        applyOtherHeaders: false,
+                        impersonateTarget: IMPERSONATION_TARGET
+                    }
+                }
+            } : {})
+        }),
+    })
+}
+/**
+ * Convert a search channel to a platform channel
+ * @param {import("./types.d.ts").SearchChannel} c
+ * @returns { PlatformChannel }
+ */
+function searchChannelToPlatformChannel(c) {
+    return new PlatformChannel({
+        id: new PlatformID(PLATFORM, c.id.toString(), config.id, PLATFORM_CLAIMTYPE),
+        name: c.user.username,
+        thumbnail: c.user.profilePic,
+        banner: '',
+        subscribers: c.followersCount,
+        description: c.user.bio,
+        url: BASE_URL + c.slug,
+        links: [],
+    })
+}
+/**
+ * Convert a Live Kick to a PlatformVideo
+ * @param { import("./types.d.ts").Stream } s
+ * @returns { PlatformVideo }
+ */
+function streamToPlatformVideo(s) {
+    
+    const channelId = s?.channel?.user?.id?.toString() ?? s?.channel?.id?.toString();
+    const channelSlug =  s?.channel?.user?.slug ?? s?.channel?.slug;
+    const channelUsername = s?.channel?.user?.username ?? s?.channel?.username;
+    const channelProfilePic = s?.channel?.user?.profilepic ?? s?.channel?.profile_pic;
+    const name = s?.session_title ?? s.title ?? '';
 
-source.getVideoDetails = function(url) {
-    return source.getContentDetails(url);
-};
+    return new PlatformVideo({
+        id: new PlatformID(PLATFORM, s.id.toString(), config.id),
+        name,
+        thumbnails: new Thumbnails([new Thumbnail(s.thumbnail.src, 0)]),
+        author: new PlatformAuthorLink(
+            new PlatformID(PLATFORM, channelId, config.id, PLATFORM_CLAIMTYPE),
+            channelUsername,
+            BASE_URL + channelSlug,
+            channelProfilePic
+        ),
+        uploadDate: parseInt(new Date(s.start_time ?? s.created_at ?? new Date().toISOString()).getTime() / 1000),
+        duration: s.duration ?? 0,
+        viewCount: s.viewer_count,
+        url: BASE_URL + channelSlug,
+        isLive: true,
+    })
+}
+/**
+ * Convert a channel VOD from the web API to a PlatformVideo
+ * @param { import("./types.d.ts").WebVideo } v
+ * @param { import("./types.d.ts").ChannelResponse } channel
+ * @returns { PlatformVideo }
+ */
+function webVideoToPlatformVideo(v, channel) {
+    return new PlatformVideo({
+        id: new PlatformID(PLATFORM, v.id, config.id),
+        name: v.title,
+        thumbnails: new Thumbnails([new Thumbnail(v.thumbnail.src, 0)]),
+        author: new PlatformAuthorLink(
+            new PlatformID(PLATFORM, channel.user_id.toString(), config.id, PLATFORM_CLAIMTYPE),
+            channel.user.username,
+            BASE_URL + channel.slug,
+            channel.user.profile_pic
+        ),
+        uploadDate: parseInt(new Date(v.start_time).getTime() / 1000),
+        duration: v.duration,
+        viewCount: v.viewer_count,
+        url: `${BASE_URL}${channel.slug}/videos/${v.id}`,
+        isLive: false,
+    })
+}
+/**
+ * Convert a VOD from the web API to a PlatformVideoDetails
+ * @param { import("./types.d.ts").WebVideo } v
+ * @param { import("./types.d.ts").ChannelResponse } channel
+ * @returns { PlatformVideoDetails }
+ */
+function webVideoToPlatformVideoDetails(v, channel) {
+    return new PlatformVideoDetails({
+        id: new PlatformID(PLATFORM, v.id, config.id),
+        name: v.title,
+        thumbnails: new Thumbnails([new Thumbnail(v.thumbnail.src, 0)]),
+        author: new PlatformAuthorLink(
+            new PlatformID(PLATFORM, channel.user_id.toString(), config.id, PLATFORM_CLAIMTYPE),
+            channel.user.username,
+            BASE_URL + channel.slug,
+            channel.user.profile_pic
+        ),
+        uploadDate: parseInt(new Date(v.start_time).getTime() / 1000),
+        duration: v.duration,
+        viewCount: v.viewer_count,
+        url: `${BASE_URL}${channel.slug}/videos/${v.id}`,
+        isLive: false,
+        description: channel.user.bio,
+        video: new VideoSourceDescriptor([vodHlsSource(v.recording_url, v.duration)]),
+    })
+}
+/**
+ * Converts a saved video to a platform video
+ * @param {import("./types.d.ts").VideoResponse} j
+ * @returns {PlatformVideoDetails}
+ */
+function savedVideoToPlatformVideo(j) {
+    const duration = j.livestream?.duration ? j.livestream.duration / 1000 : 0;
+    return new PlatformVideoDetails({
+        id: new PlatformID(PLATFORM, j.livestream.vod_id, config.id),
+        name: j.livestream.session_title,
+        thumbnails: new Thumbnails([new Thumbnail(j.livestream.thumbnail)]),
+        author: new PlatformAuthorLink(
+            new PlatformID(PLATFORM, j.livestream.channel.user_id.toString(), config.id, PLATFORM_CLAIMTYPE),
+            j.livestream.channel.user.username,
+            BASE_URL + j.livestream.channel.slug,
+            j.livestream.channel.user.profilepic
+        ),
+        uploadDate: parseInt(new Date(j.created_at).getTime() / 1000),
+        duration: duration,
+        viewCount: j.views,
+        url: `${BASE_URL}${j.livestream.channel.slug}/videos/${j.livestream.vod_id}`,
+        isLive: false,
+        description: j.livestream.channel.user.bio,
+        video: new VideoSourceDescriptor([vodHlsSource(j.source, duration)]),
+    })
+}
+/**
+ * @param {string} url
+ * @param {number} duration in seconds
+ * @returns {HLSSource}
+ */
+function vodHlsSource(url, duration) {
+    return new HLSSource({
+        name: 'hls',
+        duration: duration,
+        url: url,
+        ...(settings.useStreamImpersonation !== false ? {
+            requestModifier: {
+                options: {
+                    applyAuthClient: "",
+                    applyCookieClient: "",
+                    applyOtherHeaders: false,
+                    impersonateTarget: IMPERSONATION_TARGET
+                }
+            }
+        } : {})
+    })
+}
 
-// ---------- Live Chat Window ----------
+function throwIfCaptcha(resp) {
+    if (resp?.body && !resp?.isOk) {
+        if (/Just a moment\.\.\./i.test(resp.body) || resp.body.includes('/cdn-cgi/challenge-platform')) {
+            throw new CaptchaRequiredException(resp.url, resp.body);
+        }
+    }
+    return true;
+}
 
-source.getLiveChatWindow = function(url) {
-    var username = extractUsername(url);
-    if (!username) return null;
-    return {
-        url: "https://w.tv/" + username + "/chat"
-    };
-};
+function verbose(msg) {
+    if (settings.verboseNotifications) {
+        bridge.toast(msg);
+    }
+    log(msg);
+}
 
-// ---------- Comments ----------
-
-source.getComments = function(url) {
-    return new CommentPager([], false, null);
-};
-
-source.getSubComments = function(comment) {
-    return new CommentPager([], false, null);
-};
-
-// ---------- Subscriptions / Playlists (no auth = empty) ----------
-
-source.getUserSubscriptions = function() {
-    return [];
-};
-
-source.getUserPlaylists = function() {
-    return [];
-};
-
-// ---------- Playlist (not applicable for live-only platform) ----------
-
-source.isPlaylistUrl = function(url) {
-    return false;
-};
-
-source.getPlaylist = function(url) {
-    return [];
-};
+log('LOADED')

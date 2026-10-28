@@ -1,0 +1,165 @@
+{
+  "name": "Kick (DVR)",
+  "description": "Kick plugin with full live stream DVR rewind support (rewind to start of stream).",
+  "author": "MarianQQQ (FUTO upstream)",
+  "authorUrl": "https://github.com/MarianQQQ/grayjay-wtv",
+  "platformUrl": "https://kick.com",
+  "sourceUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickConfig.json",
+  "repositoryUrl": "https://github.com/MarianQQQ/grayjay-wtv/tree/kick",
+  "scriptUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickScript.js",
+  "version": 26,
+  "iconUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/kick.png",
+  "id": "e4f8d92a-c20f-43ac-8f75-34515df1d320",
+  "scriptSignature": "",
+  "scriptPublicKey": "",
+  "packages": [
+    "Http"
+  ],
+  "packagesOptional": [
+    "HttpImp"
+  ],
+  "allowEval": false,
+  "allowUrls": [
+    "kick.com",
+    "search.kick.com",
+    "web.kick.com",
+    "stream.kick.com"
+  ],
+  "authentication": {
+    "userAgent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.200 Mobile Safari/537.36",
+    "loginUrl": "https://kick.com",
+    "headersToFind": [
+      "Authorization"
+    ],
+    "cookiesToFind": [
+      "session_token"
+    ],
+    "loginButton": "nav button:last-child",
+    "completionUrl": "https://kick.com/broadcasting/auth"
+  },
+  "authenticationDesktop": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+    "loginUrl": "https://kick.com",
+    "headersToFind": [
+      "Authorization"
+    ],
+    "cookiesToFind": [
+      "session_token"
+    ],
+    "loginButton": "nav button:last-child",
+    "completionUrl": "https://kick.com/broadcasting/auth",
+    "useMobileEmulation": false
+  },
+  "captcha": {
+    "userAgent": null,
+    "captchaUrl": null,
+    "cookiesToFind": [
+      "cf_clearance"
+    ]
+  },
+  "supportedClaimTypes": [
+    16
+  ],
+  "captchaDesktop": {
+    "captchaUrl": null,
+    "cookiesToFind": [
+      "cf_clearance"
+    ],
+    "useMobileEmulation": false
+  },
+  "settings": [
+    {
+      "variable": "useLiveDvr",
+      "name": "Live Stream DVR (Rewind)",
+      "description": "Allows rewinding live streams back to any point from the start (adds ~15s delay to live edge)",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "useHttp",
+      "name": "HTTP",
+      "description": "Use the standard HTTP client for requests",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "useRequestRetries",
+      "name": "Request Retries",
+      "description": "Retry failed HTTP requests up to 3 times before falling back",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "useHttpImpersonation",
+      "name": "HTTP Impersonation",
+      "description": "Use browser impersonation (HttpImp) to bypass bot detection",
+      "type": "Boolean",
+      "default": "true"
+    },
+    {
+      "variable": "useStreamImpersonation",
+      "name": "Stream Impersonation",
+      "description": "Use browser impersonation when playing streams",
+      "type": "Boolean",
+      "default": "false"
+    },
+    {
+      "variable": "verboseNotifications",
+      "name": "Verbose notifications",
+      "description": "Show toast notifications for HTTP request details (useful for debugging)",
+      "type": "Boolean",
+      "default": "false"
+    }
+  ],
+  "changelog": {
+    "14": [
+      "Improvement: Add captcha support;"
+    ],
+    "15": [
+      "Improvement: Use live chat popout;"
+    ],
+    "16": [
+      "Improvement: Add social links;"
+    ],
+    "17": [
+      "Improvement: Add content recommendations;",
+      "Fix: Error playing some livestreams;",
+      "Fix: Livestream title;",
+      "Fix: Safer username extraction from URLs;",
+      "Fix: Proper URL generation while sharing previous streamed videos;",
+      "Fix: Deeplinking previous streammed videos from Kick's website;"
+    ],
+    "18": [
+      "Improvement: When playing livestreams show featured streams as recommendations. Otherwise show previous streams from the channel;"
+    ],
+    "19": [
+      "Fix: desktop authentication;",
+      "Fix: importing user subscriptions;",
+      "Improvement: retry all requests at least 3 times;"
+    ],
+    "20": [
+      "Fix: check for optional package;"
+    ],
+    "21": [
+      "Fix: duration while casting;"
+    ],
+    "22": [
+      "Fix: reflexion issue logging exceptions in desktop;"
+    ],
+    "23": [
+      "Fix: Captcha issues;"
+    ],
+    "24": [
+      "Fix: some VODs not playing when opened from a channel page (channels with capitals or spaces in their name);",
+      "Fix: channel search with special characters;"
+    ],
+    "25": [
+      "Fix: VOD links shared from Grayjay opening a not-found page on kick.com;",
+      "Fix: VOD links copied from kick.com not opening;"
+    ],
+    "26": [
+      "Feature: Real-Time Stream Rewind / DVR (rewind live streams to any moment from start);",
+      "Feature: Setting to toggle between Full DVR and Low-Latency edge."
+    ]
+  }
+}
