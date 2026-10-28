@@ -1,15 +1,15 @@
 {
-  "name": "Kick (DVR)",
-  "description": "Kick plugin with full live stream DVR rewind support (rewind to start of stream).",
+  "name": "Kick DVR",
+  "description": "Kick plugin with real-time stream DVR rewind (independent from official Kick).",
   "author": "MarianQQQ (FUTO upstream)",
   "authorUrl": "https://github.com/MarianQQQ/grayjay-wtv",
   "platformUrl": "https://kick.com",
   "sourceUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickConfig.json",
   "repositoryUrl": "https://github.com/MarianQQQ/grayjay-wtv/tree/kick",
   "scriptUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickScript.js",
-  "version": 27,
+  "version": 28,
   "iconUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/kick.png",
-  "id": "4a78c2ff-c20f-43ac-8f75-34515df1d320",
+  "id": "b82f9d14-7e5c-4861-a029-79883bfca091",
   "scriptSignature": "",
   "scriptPublicKey": "",
   "packages": [
@@ -39,8 +39,7 @@
       "session_token",
       "token_v2",
       "kick_session"
-    ],
-    "loginButton": "nav button:last-child"
+    ]
   },
   "authenticationDesktop": {
     "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
@@ -58,7 +57,6 @@
       "token_v2",
       "kick_session"
     ],
-    "loginButton": "nav button:last-child",
     "useMobileEmulation": false
   },
   "captcha": {
@@ -176,6 +174,10 @@
       "Fix: Authentication not capturing cookies (removed obsolete broadcasting/auth completionUrl);",
       "Fix: Safe getUserSubscriptions when unauthenticated;",
       "Fix: Robust thumbnail parsing in HomePager."
+    ],
+    "28": [
+      "Rename: Kick DVR with independent UUID (isolated from official Kick plugin);",
+      "Improvement: Clean login flow directly on /login without element conflicts."
     ]
   }
 }
