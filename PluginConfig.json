@@ -7,7 +7,7 @@
   "sourceUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickConfig.json",
   "repositoryUrl": "https://github.com/MarianQQQ/grayjay-wtv/tree/kick",
   "scriptUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickScript.js",
-  "version": 28,
+  "version": 29,
   "iconUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/kick.png",
   "id": "b82f9d14-7e5c-4861-a029-79883bfca091",
   "scriptSignature": "",
@@ -26,7 +26,8 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.200 Mobile Safari/537.36",
-    "loginUrl": "https://kick.com/login",
+    "loginUrl": "https://kick.com",
+    "loginButton": "button[data-testid=\"login\"], nav button:last-child",
     "headersToFind": [
       "Authorization"
     ],
@@ -43,7 +44,8 @@
   },
   "authenticationDesktop": {
     "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-    "loginUrl": "https://kick.com/login",
+    "loginUrl": "https://kick.com",
+    "loginButton": "button[data-testid=\"login\"], nav button:last-child",
     "headersToFind": [
       "Authorization"
     ],
@@ -178,6 +180,9 @@
     "28": [
       "Rename: Kick DVR with independent UUID (isolated from official Kick plugin);",
       "Improvement: Clean login flow directly on /login without element conflicts."
+    ],
+    "29": [
+      "Fix: Trigger Kick login modal via button[data-testid='login'] on https://kick.com (Kick has no standalone /login page)."
     ]
   }
 }
