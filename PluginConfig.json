@@ -7,17 +7,16 @@
   "sourceUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickConfig.json",
   "repositoryUrl": "https://github.com/MarianQQQ/grayjay-wtv/tree/kick",
   "scriptUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/KickScript.js",
-  "version": 26,
+  "version": 27,
   "iconUrl": "https://raw.githubusercontent.com/MarianQQQ/grayjay-wtv/kick/kick.png",
-  "id": "e4f8d92a-c20f-43ac-8f75-34515df1d320",
+  "id": "4a78c2ff-c20f-43ac-8f75-34515df1d320",
   "scriptSignature": "",
   "scriptPublicKey": "",
   "packages": [
-    "Http"
-  ],
-  "packagesOptional": [
+    "Http",
     "HttpImp"
   ],
+  "packagesOptional": [],
   "allowEval": false,
   "allowUrls": [
     "kick.com",
@@ -27,27 +26,39 @@
   ],
   "authentication": {
     "userAgent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.200 Mobile Safari/537.36",
-    "loginUrl": "https://kick.com",
+    "loginUrl": "https://kick.com/login",
     "headersToFind": [
       "Authorization"
     ],
+    "domainHeadersToFind": {
+      ".kick.com": [
+        "authorization"
+      ]
+    },
     "cookiesToFind": [
-      "session_token"
+      "session_token",
+      "token_v2",
+      "kick_session"
     ],
-    "loginButton": "nav button:last-child",
-    "completionUrl": "https://kick.com/broadcasting/auth"
+    "loginButton": "nav button:last-child"
   },
   "authenticationDesktop": {
     "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-    "loginUrl": "https://kick.com",
+    "loginUrl": "https://kick.com/login",
     "headersToFind": [
       "Authorization"
     ],
+    "domainHeadersToFind": {
+      ".kick.com": [
+        "authorization"
+      ]
+    },
     "cookiesToFind": [
-      "session_token"
+      "session_token",
+      "token_v2",
+      "kick_session"
     ],
     "loginButton": "nav button:last-child",
-    "completionUrl": "https://kick.com/broadcasting/auth",
     "useMobileEmulation": false
   },
   "captcha": {
@@ -160,6 +171,11 @@
     "26": [
       "Feature: Real-Time Stream Rewind / DVR (rewind live streams to any moment from start);",
       "Feature: Setting to toggle between Full DVR and Low-Latency edge."
+    ],
+    "27": [
+      "Fix: Authentication not capturing cookies (removed obsolete broadcasting/auth completionUrl);",
+      "Fix: Safe getUserSubscriptions when unauthenticated;",
+      "Fix: Robust thumbnail parsing in HomePager."
     ]
   }
 }

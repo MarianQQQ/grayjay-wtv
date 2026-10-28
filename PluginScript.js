@@ -179,10 +179,17 @@ source.getContentDetails = function (url) {
     return videoDetails;
 }
 source.getUserSubscriptions = function () {
-    /** @type {import("./types.d.ts").FollowedChannelResponse} */
-    const j = httpGET({ url: 'https://kick.com/api/v2/channels/followed?cursor=0', useAuthenticated: true })
-
-    return j.channels.map((c) => BASE_URL + c.channel_slug)
+    try {
+        /** @type {import("./types.d.ts").FollowedChannelResponse} */
+        const j = httpGET({ url: 'https://kick.com/api/v2/channels/followed?cursor=0', useAuthenticated: true });
+        if (j && Array.isArray(j.channels)) {
+            return j.channels.map((c) => BASE_URL + c.channel_slug);
+        }
+        return [];
+    } catch (e) {
+        log('getUserSubscriptions: not logged in or failed to fetch: ' + e);
+        return [];
+    }
 }
 
 source.getContentRecommendations = function (url) {
@@ -426,15 +433,29 @@ class HomePager extends VideoPager {
      * @param {import("./types.d.ts").HomeContext} context
      */
     constructor(context) {
-        /** @type {import("./types.d.ts").FeaturedStreamResponse} */
-        const json = httpGET({
-            url: `https://web.kick.com/api/v1/livestreams?page=${context.page}&limit=${context.page_size}&sort=featured_home&language=${LANG}`
-        })
+        let results = [];
+        let hasMore = false;
+        try {
+            /** @type {import("./types.d.ts").FeaturedStreamResponse} */
+            const json = httpGET({
+                url: `https://web.kick.com/api/v1/livestreams?page=${context.page}&limit=${context.page_size}&sort=featured_home`
+            });
 
-        const results = (json?.data?.livestreams ?? json?.data ?? []).map((s) => streamToPlatformVideo(s))
-        const hasMore = !!(json?.data?.pagination?.next_cursor ?? json?.next_page_url)
+            const rawList = (json?.data?.livestreams ?? json?.data ?? []);
+            results = rawList.map((s) => {
+                try {
+                    return streamToPlatformVideo(s);
+                } catch (e) {
+                    log('Failed to parse stream in HomePager: ' + e);
+                    return null;
+                }
+            }).filter(Boolean);
+            hasMore = !!(json?.data?.pagination?.next_cursor ?? json?.next_page_url);
+        } catch (e) {
+            log('HomePager request failed: ' + e);
+        }
 
-        super(results, hasMore, context)
+        super(results, hasMore, context);
     }
 
     nextPage() {
@@ -665,16 +686,19 @@ function searchChannelToPlatformChannel(c) {
  */
 function streamToPlatformVideo(s) {
     
-    const channelId = s?.channel?.user?.id?.toString() ?? s?.channel?.id?.toString();
-    const channelSlug =  s?.channel?.user?.slug ?? s?.channel?.slug;
-    const channelUsername = s?.channel?.user?.username ?? s?.channel?.username;
+    const channelId = s?.channel?.user?.id?.toString() ?? s?.channel?.id?.toString() ?? '0';
+    const channelSlug =  s?.channel?.user?.slug ?? s?.channel?.slug ?? '';
+    const channelUsername = s?.channel?.user?.username ?? s?.channel?.username ?? 'Unknown';
     const channelProfilePic = s?.channel?.user?.profilepic ?? s?.channel?.profile_pic;
-    const name = s?.session_title ?? s.title ?? '';
+    const name = s?.session_title ?? s?.title ?? '';
+
+    const thumbUrl = s?.thumbnail?.src ?? (typeof s?.thumbnail === 'string' ? s.thumbnail : '') ?? '';
+    const thumbnails = thumbUrl ? [new Thumbnail(thumbUrl, 0)] : [];
 
     return new PlatformVideo({
-        id: new PlatformID(PLATFORM, s.id.toString(), config.id),
+        id: new PlatformID(PLATFORM, (s.id || channelSlug).toString(), config.id),
         name,
-        thumbnails: new Thumbnails([new Thumbnail(s.thumbnail.src, 0)]),
+        thumbnails: new Thumbnails(thumbnails),
         author: new PlatformAuthorLink(
             new PlatformID(PLATFORM, channelId, config.id, PLATFORM_CLAIMTYPE),
             channelUsername,
